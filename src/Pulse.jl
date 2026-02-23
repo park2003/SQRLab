@@ -13,8 +13,8 @@ export simple_pulse, bfield_detune, pi2_pulse
 
     function pi2_pulse(chamber; apply_time::Float64=0.0, pitime::Float64=4e-6, phase_shift::Bool=false)
         
-        print(chamber.lasers[1].I)
-        print(chamber.lasers[1].ϕ)
+        # print(chamber.lasers[1].I)
+        # print(chamber.lasers[1].ϕ)
         res_intensity = intensity_from_pitime(chamber.lasers[1], pitime, chamber.iontrap.ions[1], ("g", "e"), chamber)
 
 
@@ -100,3 +100,38 @@ export simple_pulse, bfield_detune, pi2_pulse
 
 end
 
+export pulse_dynamic
+
+    function pulse_dynamic(T::Chamber, wait_time_ref::Ref{Float64}, pitime::Float64)
+        L = T.lasers[1]
+        pi2_time = pitime * 1e6 / 2
+        res_intensity = intensity_from_pitime(L, pitime, T.iontrap.ions[1], ("g", "e"), T)
+
+        function intensity_function(t)
+            wt = wait_time_ref[] # Check the pointer for the current wait time
+            if t <= pi2_time
+                return res_intensity
+            elseif t >= (wt - pi2_time) && t <= wt
+                return res_intensity
+            else
+                return 0.0
+            end
+        end
+        intensity!(L, intensity_function)
+
+        function phase_function(t)
+            wt = wait_time_ref[] # Check the pointer
+            if t <= pi2_time
+                return 2*pi
+            elseif t >= (wt - pi2_time)
+                return pi
+            else
+                return 0.0
+            end
+        end
+        phase!(L, phase_function)
+        
+        # We compile the Hamiltonian ONCE!
+        h = hamiltonian(T, timescale=1e-6, rwa_cutoff=Inf)
+        return h
+    end
